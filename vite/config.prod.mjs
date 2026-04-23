@@ -18,7 +18,7 @@ const phasermsg = () => {
 }
 
 export default defineConfig({
-    base: './',
+    base: '/phaserjs-ehouitte/',
     plugins: [
         react(),
         phasermsg()
