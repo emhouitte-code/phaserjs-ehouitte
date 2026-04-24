@@ -1,7 +1,7 @@
 import { Scene } from 'phaser';
-import { Level1 } from '../levels/Level1';
+import type { LevelData } from '../levels/LevelGenerator';
 
-export type LevelData = typeof Level1;
+export type { LevelData };
 
 const TEXTURE_MAP: Record<string, string> = {
     '0': 'tile-empty',

@@ -5,6 +5,7 @@ import { MainMenu } from './scenes/MainMenu';
 import { AUTO, Game } from 'phaser';
 import { Preloader } from './scenes/Preloader';
 import { Victory } from './scenes/Victory';
+import { LevelSelect } from './scenes/LevelSelect';
 
 const config: Phaser.Types.Core.GameConfig = {
     type: AUTO,
@@ -20,6 +21,7 @@ const config: Phaser.Types.Core.GameConfig = {
         MainGame,
         GameOver,
         Victory,
+        LevelSelect,
     ],
 };
 

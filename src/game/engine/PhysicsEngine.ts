@@ -4,43 +4,61 @@ export interface PhysicsResult {
     enemiesKilled: Array<{ x: number; y: number }>;
 }
 
-// 'M' = mur brique destructible, 'W' = mur extérieur indestructible
-const SOLID = new Set(['W', 'M', 'B', '1', 'X', 'O', 'P']);
-
 export class PhysicsEngine {
+    // Tracks cells that contain items currently in motion (falling or sliding)
+    private fallingItems = new Set<string>();
+
     tick(grid: string[][], playerPos: { x: number; y: number }): PhysicsResult {
         const height = grid.length;
         const width = grid[0].length;
         const changed: Array<[number, number]> = [];
         let playerCrushed = false;
         const enemiesKilled: Array<{ x: number; y: number }> = [];
+        const newFalling = new Set<string>();
+        // Prevent a rock/diamond moved this tick from being processed again
+        const processed = new Set<string>();
 
         for (let y = height - 2; y >= 0; y--) {
             for (let x = 1; x < width - 1; x++) {
+                const key = `${x},${y}`;
+                if (processed.has(key)) continue;
+
                 const cell = grid[y][x];
                 if (cell !== '2' && cell !== '3') continue;
 
+                const wasFalling = this.fallingItems.has(key);
                 const below = grid[y + 1][x];
 
                 if (below === '0') {
-                    // Chute libre
+                    // Chute libre verticale
                     grid[y + 1][x] = cell;
                     grid[y][x] = '0';
                     changed.push([y, x], [y + 1, x]);
+                    const destKey = `${x},${y + 1}`;
+                    newFalling.add(destKey);
+                    processed.add(destKey);
+
                 } else if (below === 'P') {
-                    // Rocher/diamant tombe sur le joueur → écrasé
-                    grid[y + 1][x] = cell;
-                    grid[y][x] = '0';
-                    changed.push([y, x], [y + 1, x]);
-                    playerCrushed = true;
+                    // Joueur directement en dessous
+                    if (wasFalling) {
+                        // Objet était en chute → écrase le joueur
+                        grid[y + 1][x] = cell;
+                        grid[y][x] = '0';
+                        changed.push([y, x], [y + 1, x]);
+                        newFalling.add(`${x},${y + 1}`);
+                        playerCrushed = true;
+                    }
+                    // Sinon : le joueur a creusé dessous, le rocher reste posé sur lui
+
                 } else if (below === 'E' || below === 'F') {
                     // Tombe sur ennemi → explosion 3×3
                     const playerHit = this.explode(grid, x, y + 1, playerPos, changed, enemiesKilled);
                     if (playerHit) playerCrushed = true;
                     grid[y][x] = '0';
                     changed.push([y, x]);
+
                 } else if (below === 'B') {
-                    // Barrière : l'objet disparaît au-dessus, réapparaît transformé en-dessous
+                    // Barrière : l'objet passe à travers et se transforme (rock↔diamond)
                     const transformed = cell === '3' ? '2' : '3';
                     const belowY = y + 2;
                     grid[y][x] = '0';
@@ -50,38 +68,47 @@ export class PhysicsEngine {
                         if (belowBarrier === '0') {
                             grid[belowY][x] = transformed;
                             changed.push([belowY, x]);
+                            newFalling.add(`${x},${belowY}`);
                         } else if (belowBarrier === 'P') {
-                            // L'objet transformé tombe sur le joueur
                             grid[belowY][x] = transformed;
                             changed.push([belowY, x]);
                             playerCrushed = true;
                         }
-                        // Sinon : objet consommé (détruit par la barrière)
+                        // Sinon : objet consommé (sortie bloquée)
                     }
-                } else if (below === '2' || below === '3' || SOLID.has(below)) {
-                    // Glissement à gauche
-                    const canSlideLeft = x > 1 && grid[y][x - 1] === '0';
-                    const leftLanding = x > 1 ? grid[y + 1][x - 1] : null;
-                    if (canSlideLeft && (leftLanding === '0' || leftLanding === 'P')) {
-                        grid[y + 1][x - 1] = cell;
+
+                } else if (below === '2' || below === '3') {
+                    // Repose sur un rocher ou un diamant → peut glisser latéralement
+                    // Condition : la case de côté ET la case diagonale doivent être vides
+                    const canSlideLeft = x > 1
+                        && grid[y][x - 1] === '0'
+                        && grid[y + 1][x - 1] === '0';
+                    const canSlideRight = x < width - 2
+                        && grid[y][x + 1] === '0'
+                        && grid[y + 1][x + 1] === '0';
+
+                    if (canSlideLeft) {
+                        grid[y][x - 1] = cell;
                         grid[y][x] = '0';
-                        changed.push([y, x], [y + 1, x - 1]);
-                        if (x - 1 === playerPos.x && y + 1 === playerPos.y) playerCrushed = true;
-                    } else {
-                        // Glissement à droite
-                        const canSlideRight = x < width - 2 && grid[y][x + 1] === '0';
-                        const rightLanding = x < width - 2 ? grid[y + 1][x + 1] : null;
-                        if (canSlideRight && (rightLanding === '0' || rightLanding === 'P')) {
-                            grid[y + 1][x + 1] = cell;
-                            grid[y][x] = '0';
-                            changed.push([y, x], [y + 1, x + 1]);
-                            if (x + 1 === playerPos.x && y + 1 === playerPos.y) playerCrushed = true;
-                        }
+                        changed.push([y, x], [y, x - 1]);
+                        const destKey = `${x - 1},${y}`;
+                        newFalling.add(destKey);
+                        processed.add(destKey);
+                    } else if (canSlideRight) {
+                        grid[y][x + 1] = cell;
+                        grid[y][x] = '0';
+                        changed.push([y, x], [y, x + 1]);
+                        const destKey = `${x + 1},${y}`;
+                        newFalling.add(destKey);
+                        processed.add(destKey);
                     }
+                    // Sinon : reste immobile sur le rocher/diamant
                 }
+                // Sur terre ('1'), mur ('W','M'), sortie ('X','O'), barrière ('B') → reste immobile
             }
         }
 
+        this.fallingItems = newFalling;
         return { changedCells: changed, playerCrushed, enemiesKilled };
     }
 

@@ -5,16 +5,17 @@ import { PhysicsEngine } from '../engine/PhysicsEngine';
 import { EnemyAI, EnemyState } from '../engine/EnemyAI';
 import { PlayerController } from '../engine/PlayerController';
 import { SoundManager } from '../audio/SoundManager';
-import { Level1 } from '../levels/Level1';
+import { generateLevel } from '../levels/LevelGenerator';
+import { ProgressManager } from '../services/ProgressManager';
 
 export class Game extends Scene {
-    private levelManager: LevelManager;
-    private physicsEngine: PhysicsEngine;
-    private enemyAI: EnemyAI;
-    private playerController: PlayerController;
-    private soundManager: SoundManager;
+    private levelManager!: LevelManager;
+    private physicsEngine!: PhysicsEngine;
+    private enemyAI!: EnemyAI;
+    private playerController!: PlayerController;
+    private soundManager!: SoundManager;
 
-    private grid: string[][];
+    private grid: string[][] = [];
     private playerX: number = 0;
     private playerY: number = 0;
     private enemies: EnemyState[] = [];
@@ -26,17 +27,21 @@ export class Game extends Scene {
     private diamondQuota: number = 10;
     private timeRemaining: number = 300;
     private gameRunning: boolean = false;
+    private currentLevel: number = 1;
 
-    private hudBg: Phaser.GameObjects.Rectangle;
-    private hudDiamonds: Phaser.GameObjects.Text;
-    private hudTimer: Phaser.GameObjects.Text;
+    private hudDiamonds!: Phaser.GameObjects.Text;
+    private hudTimer!: Phaser.GameObjects.Text;
 
     constructor() {
         super('Game');
     }
 
+    init(data: { level?: number }) {
+        this.currentLevel = data?.level ?? 1;
+    }
+
     create() {
-        const levelData = Level1;
+        const levelData = generateLevel(this.currentLevel);
         this.diamondQuota = levelData.diamondQuota;
         this.timeRemaining = levelData.timeLimit;
         this.diamondsCollected = 0;
@@ -78,13 +83,10 @@ export class Game extends Scene {
         const hudY = sh - 64;
         const hudH = 64;
 
-        // Fond noir de toute la barre HUD
-        this.hudBg = this.add.rectangle(0, hudY, sw, hudH, 0x000000)
-            .setOrigin(0, 0)
-            .setScrollFactor(0)
-            .setDepth(10);
+        this.add.rectangle(0, hudY, sw, hudH, 0x000000)
+            .setOrigin(0, 0).setScrollFactor(0).setDepth(10);
 
-        // Bloc jaune gauche — titre du jeu
+        // Bloc jaune gauche
         this.add.rectangle(0, hudY, 130, hudH, 0xBB8800)
             .setOrigin(0, 0).setScrollFactor(0).setDepth(11);
         this.add.rectangle(2, hudY + 2, 126, hudH - 4, 0xDDAA00)
@@ -96,50 +98,44 @@ export class Game extends Scene {
             align: 'center',
         }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(12);
 
-        // Séparateurs verticaux dorés
+        // Séparateurs dorés
         this.add.rectangle(130, hudY, 3, hudH, 0xBB8800).setOrigin(0, 0).setScrollFactor(0).setDepth(11);
         this.add.rectangle(sw - 130, hudY, 3, hudH, 0xBB8800).setOrigin(0, 0).setScrollFactor(0).setDepth(11);
 
-        // Bloc jaune droit — galerie + diamant
+        // Bloc jaune droit — niveau + diamants
         this.add.rectangle(sw - 130, hudY, 130, hudH, 0xBB8800)
             .setOrigin(0, 0).setScrollFactor(0).setDepth(11);
         this.add.rectangle(sw - 128, hudY + 2, 126, hudH - 4, 0xDDAA00)
             .setOrigin(0, 0).setScrollFactor(0).setDepth(11);
-        this.add.text(sw - 65, hudY + 6, 'Galerie', {
-            fontFamily: 'Arial Black, Arial', fontSize: '12px', color: '#FFFF00',
+        this.add.text(sw - 65, hudY + 6, `Niveau ${this.currentLevel}`, {
+            fontFamily: 'Arial Black, Arial', fontSize: '13px', color: '#FFFF00',
         }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(12);
-        this.add.text(sw - 100, hudY + 26, '01', {
-            fontFamily: 'Arial Black, Arial', fontSize: '18px', color: '#0044FF',
-        }).setOrigin(0, 0).setScrollFactor(0).setDepth(12);
 
-        // Étiquettes blanches centrales
+        // Étiquettes centrales
         this.add.text(200, hudY + 6, 'Points', {
             fontFamily: 'Arial Black, Arial', fontSize: '14px', color: '#FFFFFF',
         }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(12);
         this.add.text(sw / 2, hudY + 6, 'Temps', {
             fontFamily: 'Arial Black, Arial', fontSize: '14px', color: '#FFFFFF',
         }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(12);
-        this.add.text(sw - 230, hudY + 6, 'Record', {
+        this.add.text(sw - 230, hudY + 6, 'Diamants', {
             fontFamily: 'Arial Black, Arial', fontSize: '14px', color: '#FFFFFF',
         }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(12);
 
-        // Score (fixe à 0 pour l'instant)
+        // Score (fixe)
         this.add.text(200, hudY + 30, '000000', {
             fontFamily: 'Arial Black, Arial', fontSize: '16px', color: '#00DDDD',
         }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(12);
-        this.add.text(sw - 230, hudY + 30, '000000', {
-            fontFamily: 'Arial Black, Arial', fontSize: '16px', color: '#00DDDD',
-        }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(12);
 
-        // Timer (valeur dynamique) — cyan comme dans la référence
+        // Timer dynamique
         this.hudTimer = this.add.text(sw / 2, hudY + 30, '5:00', {
             fontFamily: 'Arial Black, Arial',
             fontSize: '20px',
             color: '#00DDDD',
         }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(12);
 
-        // Compteur diamants (bloc droit, sous "01") — icône + compteur
-        this.hudDiamonds = this.add.text(sw - 65, hudY + 30, `◆ 0/${this.diamondQuota}`, {
+        // Compteur diamants
+        this.hudDiamonds = this.add.text(sw - 230, hudY + 30, `◆ 0/${this.diamondQuota}`, {
             fontFamily: 'Arial Black, Arial',
             fontSize: '16px',
             color: '#FFFF00',
@@ -249,13 +245,9 @@ export class Game extends Scene {
     }
 
     private updateHUD(): void {
-        // Timer en format MN (ex: "214" comme dans la référence, ou "4:45")
         const mins = Math.floor(this.timeRemaining / 60);
         const secs = this.timeRemaining % 60;
-        const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
-        this.hudTimer.setText(timeStr);
-
-        // Compteur diamants (bloc droit)
+        this.hudTimer.setText(`${mins}:${secs.toString().padStart(2, '0')}`);
         this.hudDiamonds.setText(`◆ ${this.diamondsCollected}/${this.diamondQuota}`);
 
         if (this.timeRemaining <= 30) {
@@ -307,21 +299,26 @@ export class Game extends Scene {
     private die(reason: string): void {
         if (!this.gameRunning) return;
         this.gameRunning = false;
+        ProgressManager.setLastLevel(this.currentLevel);
         this.soundManager.playDeath();
         this.cameras.main.shake(300, 0.01);
         this.time.delayedCall(600, () => {
-            this.scene.start('GameOver', { reason });
+            this.scene.start('GameOver', { reason, level: this.currentLevel });
         });
     }
 
     private win(): void {
         if (!this.gameRunning) return;
         this.gameRunning = false;
+        // Unlock next level
+        ProgressManager.setMaxLevel(this.currentLevel + 1);
         this.time.delayedCall(300, () => {
             this.scene.start('Victory', {
                 diamonds: this.diamondsCollected,
-                time: this.timeRemaining,
+                timeLeft: this.timeRemaining,
+                level: this.currentLevel,
             });
         });
     }
 }
+
