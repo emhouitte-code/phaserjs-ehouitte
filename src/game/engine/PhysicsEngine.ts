@@ -77,8 +77,8 @@ export class PhysicsEngine {
                         // Sinon : objet consommé (sortie bloquée)
                     }
 
-                } else if (below === '2' || below === '3') {
-                    // Repose sur un rocher ou un diamant → peut glisser latéralement
+                } else if (below === '2' || below === '3' || below === 'M') {
+                    // Repose sur un rocher, un diamant, ou un mur de brique → glissement latéral
                     // Condition : la case de côté ET la case diagonale doivent être vides
                     const canSlideLeft = x > 1
                         && grid[y][x - 1] === '0'

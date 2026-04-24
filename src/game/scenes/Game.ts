@@ -22,6 +22,7 @@ export class Game extends Scene {
     private exitX: number = 0;
     private exitY: number = 0;
     private exitOpen: boolean = false;
+    private exitBlinkTween: Phaser.Tweens.Tween | null = null;
 
     private diamondsCollected: number = 0;
     private diamondQuota: number = 10;
@@ -118,8 +119,10 @@ export class Game extends Scene {
         this.add.text(sw / 2, hudY + 6, 'Temps', {
             fontFamily: 'Arial Black, Arial', fontSize: '14px', color: '#FFFFFF',
         }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(12);
-        this.add.text(sw - 230, hudY + 6, 'Diamants', {
-            fontFamily: 'Arial Black, Arial', fontSize: '14px', color: '#FFFFFF',
+
+        // Diamond counter label — prominent, center-right
+        this.add.text(sw - 230, hudY + 4, '◆ Diamants', {
+            fontFamily: 'Arial Black, Arial', fontSize: '13px', color: '#FFFF00',
         }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(12);
 
         // Score (fixe)
@@ -128,16 +131,18 @@ export class Game extends Scene {
         }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(12);
 
         // Timer dynamique
-        this.hudTimer = this.add.text(sw / 2, hudY + 30, '5:00', {
+        this.hudTimer = this.add.text(sw / 2, hudY + 28, '5:00', {
             fontFamily: 'Arial Black, Arial',
-            fontSize: '20px',
+            fontSize: '22px',
             color: '#00DDDD',
         }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(12);
 
-        // Compteur diamants
-        this.hudDiamonds = this.add.text(sw - 230, hudY + 30, `◆ 0/${this.diamondQuota}`, {
+        // Compteur diamants — grand, visible, avec fond sombre
+        this.add.rectangle(sw - 230, hudY + 24, 170, 32, 0x000033)
+            .setOrigin(0.5, 0).setScrollFactor(0).setDepth(11);
+        this.hudDiamonds = this.add.text(sw - 230, hudY + 26, `0 / ${this.diamondQuota}`, {
             fontFamily: 'Arial Black, Arial',
-            fontSize: '16px',
+            fontSize: '22px',
             color: '#FFFF00',
         }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(12);
 
@@ -171,6 +176,7 @@ export class Game extends Scene {
                 this.diamondsCollected++;
                 this.soundManager.playDiamond();
                 this.updateHUD();
+                this.flashDiamondHUD();
                 if (this.diamondsCollected >= this.diamondQuota && !this.exitOpen) {
                     this.openExit();
                 }
@@ -248,7 +254,7 @@ export class Game extends Scene {
         const mins = Math.floor(this.timeRemaining / 60);
         const secs = this.timeRemaining % 60;
         this.hudTimer.setText(`${mins}:${secs.toString().padStart(2, '0')}`);
-        this.hudDiamonds.setText(`◆ ${this.diamondsCollected}/${this.diamondQuota}`);
+        this.hudDiamonds.setText(`${this.diamondsCollected} / ${this.diamondQuota}`);
 
         if (this.timeRemaining <= 30) {
             this.hudTimer.setColor('#FF2200');
@@ -257,6 +263,27 @@ export class Game extends Scene {
             this.hudTimer.setColor('#00DDDD');
             this.hudTimer.setAlpha(1);
         }
+
+        // Turn diamond counter green when quota is reached
+        if (this.diamondsCollected >= this.diamondQuota) {
+            this.hudDiamonds.setColor('#44FF44');
+        }
+    }
+
+    private flashDiamondHUD(): void {
+        this.tweens.add({
+            targets: this.hudDiamonds,
+            scaleX: 1.5,
+            scaleY: 1.5,
+            duration: 90,
+            yoyo: true,
+            ease: 'Power2Out',
+            onStart: () => this.hudDiamonds.setColor('#FFFFFF'),
+            onComplete: () => {
+                const done = this.diamondsCollected >= this.diamondQuota;
+                this.hudDiamonds.setColor(done ? '#44FF44' : '#FFFF00');
+            },
+        });
     }
 
     private openExit(): void {
@@ -267,13 +294,13 @@ export class Game extends Scene {
 
         const exitSprite = this.levelManager.getSprite(this.exitX, this.exitY);
         if (exitSprite) {
-            this.tweens.add({
+            // Blink infinitely until the player steps on it
+            this.exitBlinkTween = this.tweens.add({
                 targets: exitSprite,
-                alpha: 0.3,
-                duration: 300,
-                repeat: 4,
+                alpha: 0.15,
+                duration: 280,
+                repeat: -1,
                 yoyo: true,
-                onComplete: () => exitSprite.setAlpha(1),
             });
         }
     }
@@ -310,7 +337,13 @@ export class Game extends Scene {
     private win(): void {
         if (!this.gameRunning) return;
         this.gameRunning = false;
-        // Unlock next level
+        // Stop exit blinking
+        if (this.exitBlinkTween) {
+            this.exitBlinkTween.stop();
+            this.exitBlinkTween = null;
+            const exitSprite = this.levelManager.getSprite(this.exitX, this.exitY);
+            if (exitSprite) exitSprite.setAlpha(1);
+        }
         ProgressManager.setMaxLevel(this.currentLevel + 1);
         this.time.delayedCall(300, () => {
             this.scene.start('Victory', {
